@@ -58,62 +58,61 @@ async def llm_model_func(
         **kwargs
     )
 
-async def initialize_rag(
-    base_dir: str,
-    source: str,
-    mode:str,
-    model_name: str,
-    embed_model_name: str,
-    llm_base_url: str,
-    llm_api_key: str
+async def lightrag_init_func(
+    corpus_name, context, base_dir, args
 ) -> LightRAG:
-    """Initialize LightRAG instance for a specific corpus"""
-    working_dir = os.path.join(base_dir, source)
+    """
+        Initialize LightRAG for a specific corpus
+        Take:
+        - corpus_name: Name of the corpus
+        - context: Text content of the corpus
+        - base_dir: Base directory for storing data
+        - args: Parsed command-line arguments
+        Return:
+        - Initialized LightRAG instance
+    """
+    working_dir = os.path.join(base_dir, corpus_name)
+    os.makedirs(working_dir, exist_ok=True) # already done in shared_code
     
-    # Create directory for this corpus
-    os.makedirs(working_dir, exist_ok=True)
-    
-    if mode == "API":
-        tokenizer = AutoTokenizer.from_pretrained(embed_model_name)
-        embed_model = AutoModel.from_pretrained(embed_model_name)
-        # Initialize embedding function
+    if args.mode == "API":
+        tokenizer = AutoTokenizer.from_pretrained(args.embed_model)
+        embed_model = AutoModel.from_pretrained(args.embed_model)
         embedding_func = EmbeddingFunc(
             embedding_dim=1024,
             max_token_size=8192,
             func=lambda texts: hf_embed(texts, tokenizer, embed_model),
         )
-        
-        # Create LLM configuration
-        llm_kwargs = {
-            "model_name": model_name,
-            "base_url": llm_base_url,
-            "api_key": llm_api_key
-        }
 
-        llm_model_func_input = llm_model_func
-    elif mode == "ollama":
+        llm_kwargs = {
+            "model_name": args.model_name,
+            "base_url": args.llm_base_url,
+            "api_key": args.llm_api_key
+        }
+        # TODO: I dont think this works as intended
+        # llm_model_func_input = llm_model_func
+    elif args.mode == "ollama":
         embedding_func = EmbeddingFunc(
             embedding_dim=1024,
             max_token_size=8192,
             func=lambda texts: ollama_embed(
-                texts, embed_model=embed_model_name, host=llm_base_url
+                texts, embed_model=args.embed_model, host=args.llm_base_url
             ),
         )
 
         llm_kwargs = {
-            "host": llm_base_url,
+            "host": args.llm_base_url,
             "options": {"num_ctx": 32768},
         }
 
         llm_model_func = ollama_model_complete
     else:
-        raise ValueError(f"Unsupported mode: {mode}. Use 'API' or 'ollama'.")
+        raise ValueError(f"Unsupported mode: {args.mode}. Use 'API' or 'ollama'.")
     
     # Create RAG instance
     rag = LightRAG(
         working_dir=working_dir,
         llm_model_func=llm_model_func,
-        llm_model_name=model_name,
+        llm_model_name=args.model_name,
         llm_model_max_async=4,
         llm_model_max_token_size=32768,
         chunk_token_size=1200,
@@ -124,41 +123,20 @@ async def initialize_rag(
 
     await rag.initialize_storages()
     await initialize_pipeline_status()
+    rag.insert(context)
     return rag
 
-async def lightrag_init_func(corpus_name, context, base_dir, args):
-    """
-    Initialize LightRAG for a specific corpus
-    Take:
-    - corpus_name: Name of the corpus
-    - context: Text content of the corpus
-    - base_dir: Base directory for storing data
-    - args: Parsed command-line arguments
-    Return:
-    - Initialized LightRAG instance
-    """
-    rag = await initialize_rag(
-        base_dir=base_dir,
-        source=corpus_name,
-        mode=args.mode,
-        model_name=args.model_name,
-        embed_model_name=args.embed_model,
-        llm_base_url=args.llm_base_url,
-        llm_api_key=args.llm_api_key
-    )
-    await rag.insert(context)
-    return rag
 
 async def lightrag_query_func(rag, question, args) -> (str, list):
     """
-    Query LightRAG with a question and return the response and context
-    Take:
-    - rag: Initialized LightRAG instance
-    - question: Dictionary with 'question' key
-    - args: Parsed command-line arguments
-    Return:
-    - response: Generated answer string
-    - context: List of context documents used for the answer
+        Query LightRAG with a question and return the response and context
+        Take:
+        - rag: Initialized LightRAG instance
+        - question: Dictionary with 'question' key
+        - args: Parsed command-line arguments
+        Return:
+        - response: Generated answer string
+        - context: List of context documents used for the answer
     """
     query_param = QueryParam(
         mode='hybrid',

@@ -1,24 +1,10 @@
-import os
+import argparse
 import json
 import logging
+import os
 from typing import Dict, List
 
 from tqdm import tqdm
-
-
-def setup_logging(logfile: str = None, level: int = logging.INFO):
-    handlers = [logging.StreamHandler()]
-    if logfile:
-        handlers.append(logging.FileHandler(logfile))
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        level=level,
-        handlers=handlers
-    )
-    return logging.getLogger(__name__)
-
-
-import argparse
 
 # Define subset paths
 SUBSET_PATHS = {
@@ -32,11 +18,10 @@ SUBSET_PATHS = {
     }
 }
 
-
 BASE_ARG_CONFIG = {
     "description": "Process Corpora and Answer Questions",
     "args": [
-        {"flags": ["--method"], "params": {"required": True, "type":str, "help": "Method name for logging and folder naming"}},
+        {"flags": ["--method"], "params": {"required": True, "type":str, "help": "Method name for logging and folder naming - e.g. 'LightRAG' or 'HippoRAG'"}},
         {"flags": ["--subset"], "params": {"required": True, "choices": ["medical", "novel"], "help": "Subset to process"}},
         {"flags": ["--base_dir"], "params": {"default": "./workspace", "help": "Base working directory"}},
         {"flags": ["--mode"], "params": {"required": True, "choices": ["API", "ollama"], "help": "Use API or ollama for LLM"}},
@@ -47,6 +32,19 @@ BASE_ARG_CONFIG = {
         {"flags": ["--llm_api_key"], "params": {"default": os.getenv("OPENAI_API_KEY", ""), "help": "API key for LLM service"}},
     ]
 }
+
+
+def setup_logging(logfile: str = None, level: int = logging.INFO):
+    handlers = [logging.StreamHandler()]
+    if logfile:
+        handlers.append(logging.FileHandler(logfile))
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        level=level,
+        handlers=handlers
+    )
+    return logging.getLogger(__name__)
+
 
 def parse_args(arg_config):
     parser = argparse.ArgumentParser(description=arg_config.get("description", "Process Corpora and Answer Questions"))
@@ -123,15 +121,14 @@ async def process_corpus(
     """Process a single corpus: index it and answer its questions"""
     logging.info(f"📚 Processing corpus: {corpus_name}")
 
-    # Initialize RAG and index corpus
-    rag = await rag_init_func(corpus_name, context, base_dir, args)
-
-    logging.info(f"✅ Indexed corpus: {corpus_name} ({len(context.split())} words)")
-
     # Prepare output path
     corpus_output_dir = os.path.join(output_dir, corpus_name)
     os.makedirs(corpus_output_dir, exist_ok=True)
     output_path = os.path.join(corpus_output_dir, f"predictions_{corpus_name}.json")
+
+    # Initialize RAG and index corpus
+    rag = await rag_init_func(corpus_name, context, base_dir, args)
+    logging.info(f"✅ Indexed corpus: {corpus_name} ({len(context.split())} words)")
 
     # Get questions for this corpus
     corpus_questions = questions.get(corpus_name, [])
