@@ -1,38 +1,22 @@
 # lightrag_example.py
 import asyncio
-import os
 import logging
-import nest_asyncio
-import argparse
-import json
-from typing import Dict, List
+import os
 
+import nest_asyncio
 from lightrag import LightRAG, QueryParam
-from lightrag.llm.openai import openai_complete_if_cache
-from lightrag.llm.hf import hf_embed
-from lightrag.utils import EmbeddingFunc
 from lightrag.kg.shared_storage import initialize_pipeline_status
-from transformers import AutoModel, AutoTokenizer
-from tqdm import tqdm
+from lightrag.llm.hf import hf_embed
 from lightrag.llm.ollama import ollama_model_complete, ollama_embed
+from lightrag.llm.openai import openai_complete_if_cache
+from lightrag.utils import EmbeddingFunc
+from transformers import AutoModel, AutoTokenizer
+
+from shared_code import BASE_ARG_CONFIG, init_data, parse_args, setup_logging, process_corpus
 
 # Apply nest_asyncio for Jupyter environments
 nest_asyncio.apply()
-logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
-
-
-def group_questions_by_source(question_list):
-    grouped_questions = {}
-
-    for question in question_list:
-        source = question.get("source")
-
-        if source not in grouped_questions:
-            grouped_questions[source] = []
-
-        grouped_questions[source].append(question)
-
-    return grouped_questions
+logger = setup_logging("lightrag_processing.log")
 
 
 SYSTEM_PROMPT = """
@@ -143,178 +127,76 @@ async def initialize_rag(
     await initialize_pipeline_status()
     return rag
 
-async def process_corpus(
-    corpus_name: str,
-    context: str,
-    base_dir: str,
-    mode: str,
-    model_name: str,
-    embed_model_name: str,
-    llm_base_url: str,
-    llm_api_key: str,
-    questions: List[dict],
-    sample: int,
-    retrieve_topk: int
-):
-    """Process a single corpus: index it and answer its questions"""
-    logging.info(f"📚 Processing corpus: {corpus_name}")
-    
-    # Initialize RAG for this corpus
+async def lightrag_init_func(corpus_name, context, base_dir, args):
+    """
+    Initialize LightRAG for a specific corpus
+    Take:
+    - corpus_name: Name of the corpus
+    - context: Text content of the corpus
+    - base_dir: Base directory for storing data
+    - args: Parsed command-line arguments
+    Return:
+    - Initialized LightRAG instance
+    """
     rag = await initialize_rag(
         base_dir=base_dir,
         source=corpus_name,
-        mode=mode,
-        model_name=model_name,
-        embed_model_name=embed_model_name,
-        llm_base_url=llm_base_url,
-        llm_api_key=llm_api_key
+        mode=args.mode,
+        model_name=args.model_name,
+        embed_model_name=args.embed_model,
+        llm_base_url=args.llm_base_url,
+        llm_api_key=args.llm_api_key
     )
-    
-    # Index the corpus content
-    rag.insert(context)
-    logging.info(f"✅ Indexed corpus: {corpus_name} ({len(context.split())} words)")
-    
-    corpus_questions = questions.get(corpus_name, [])
-    
-    if not corpus_questions:
-        logging.warning(f"No questions found for corpus: {corpus_name}")
-        return
-    
-    # Sample questions if requested
-    if sample and sample < len(corpus_questions):
-        corpus_questions = corpus_questions[:sample]
-    
-    logging.info(f"🔍 Found {len(corpus_questions)} questions for {corpus_name}")
-    
-    # Prepare output path
-    output_dir = f"./results/lightrag/{corpus_name}"
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"predictions_{corpus_name}.json")
-    
-    # Process questions
-    results = []
-    query_type = 'hybrid'
-    
-    for q in tqdm(corpus_questions, desc=f"Answering questions for {corpus_name}"):
-        # Prepare query parameters
-        query_param = QueryParam(
-            mode=query_type,
-            top_k=retrieve_topk,
-            max_token_for_text_unit=4000,
-            max_token_for_global_context=4000,
-            max_token_for_local_context=4000
-        )
-        
-        # Execute query
-        response, context = rag.query(
-            q["question"],
-            param=query_param,
-            system_prompt=SYSTEM_PROMPT
-        )
-        
-        # Handle both async and sync responses
-        if asyncio.iscoroutine(response):
-            response = await response
-        predicted_answer = str(response)
+    await rag.insert(context)
+    return rag
 
-        # Collect results
-        results.append({
-            "id": q["id"],
-            "question": q["question"],
-            "source": corpus_name,
-            "context": context,
-            "evidence": q["evidence"],
-            "question_type": q["question_type"],
-            "generated_answer": predicted_answer,
-            "ground_truth": q.get("answer"),
-
-        })
-    
-    # Save results
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=2, ensure_ascii=False)
-    
-    logging.info(f"💾 Saved {len(results)} predictions to: {output_path}")
+async def lightrag_query_func(rag, question, args) -> (str, list):
+    """
+    Query LightRAG with a question and return the response and context
+    Take:
+    - rag: Initialized LightRAG instance
+    - question: Dictionary with 'question' key
+    - args: Parsed command-line arguments
+    Return:
+    - response: Generated answer string
+    - context: List of context documents used for the answer
+    """
+    query_param = QueryParam(
+        mode='hybrid',
+        top_k=args.retrieve_topk,
+        max_token_for_text_unit=4000,
+        max_token_for_global_context=4000,
+        max_token_for_local_context=4000
+    )
+    response, context = rag.query(
+        question["question"],
+        param=query_param,
+        system_prompt=SYSTEM_PROMPT
+    )
+    if asyncio.iscoroutine(response):
+        response = await response
+    return str(response), context
 
 def main():
-    # Define subset paths
-    SUBSET_PATHS = {
-        "medical": {
-            "corpus": "./Datasets/Corpus/medical.json",
-            "questions": "./Datasets/Questions/medical_questions.json"
-        },
-        "novel": {
-            "corpus": "./Datasets/Corpus/novel.json",
-            "questions": "./Datasets/Questions/novel_questions.json"
-        }
-    }
-    
-    parser = argparse.ArgumentParser(description="LightRAG: Process Corpora and Answer Questions")
-    
-    # Core arguments
-    parser.add_argument("--subset", required=True, choices=["medical", "novel"], 
-                        help="Subset to process (medical or novel)")
-    parser.add_argument("--base_dir", default="./lightrag_workspace", help="Base working directory")
-    
-    # Model configuration
-    parser.add_argument("--mode", required=True, choices=["API", "ollama"], help="Use API or ollama for LLM")
-    parser.add_argument("--model_name", default="qwen2.5-14b-instruct", help="LLM model identifier")
-    parser.add_argument("--embed_model", default="bge-base-en", help="Embedding model name")
-    parser.add_argument("--retrieve_topk", type=int, default=5, help="Number of top documents to retrieve")
-    parser.add_argument("--sample", type=int, default=None, help="Number of questions to sample per corpus")
-    
-    # API configuration
-    parser.add_argument("--llm_base_url", default="https://api.openai.com/v1", 
-                        help="Base URL for LLM API")
-    parser.add_argument("--llm_api_key", default="", 
-                        help="API key for LLM service (can also use LLM_API_KEY environment variable)")
+    """
+        Main function to process corpora and answer questions using Method (LightRAG).
+        This can be used as a template for other (Graph)RAG systems.
+        The main function should not require changes beyond
+        - adding commandline arguments and
+        - changing the rag_init_func and rag_query_func.
+    """
+    # Optionally extend BASE_ARG_CONFIG for script-specific arguments
+    arg_config = BASE_ARG_CONFIG.copy()
+    arg_config["args"] += [
+        {"flags": ["--retrieve_topk"],
+         "params": {"type": int, "default": 5, "help": "Number of top documents to retrieve"}}
+    ]
+    arg_config["args"][0]["params"]["default"] = "LightRAG"
+    args = parse_args(arg_config)
 
-    args = parser.parse_args()
-    
-    # Validate subset and mode
-    if args.subset not in SUBSET_PATHS:
-        logging.error(f"Invalid subset: {args.subset}. Valid options: {list(SUBSET_PATHS.keys())}")
-        return
-    if args.mode not in ["API", "ollama"]:
-        logging.error(f'Invalid mode: {args.subset}. Valid options: {["API", "ollama"]}')
-        return
-    
-    # Get file paths for this subset
-    corpus_path = SUBSET_PATHS[args.subset]["corpus"]
-    questions_path = SUBSET_PATHS[args.subset]["questions"]
-    
-    # Handle API key security
-    api_key = args.llm_api_key or os.getenv("LLM_API_KEY", "")
-    if not api_key:
-        logging.warning("No API key provided! Requests may fail.")
-    
-    # Create workspace directory
-    os.makedirs(args.base_dir, exist_ok=True)
-    
-    # Load corpus data
-    try:
-        with open(corpus_path, "r", encoding="utf-8") as f:
-            corpus_data = json.load(f)
-        logging.info(f"Loaded corpus with {len(corpus_data)} documents from {corpus_path}")
-    except Exception as e:
-        logging.error(f"Failed to load corpus: {e}")
-        return
-    
-    # Sample corpus data if requested
-    if args.sample:
-        corpus_data = corpus_data[:1]
-
-    # Load question data
-    try:
-        with open(questions_path, "r", encoding="utf-8") as f:
-            question_data = json.load(f)
-            grouped_questions = group_questions_by_source(question_data)
-        logging.info(f"Loaded questions with {len(question_data)} entries from {questions_path}")
-    except Exception as e:
-        logging.error(f"Failed to load questions: {e}")
-        return
-    
-    # Process each corpus in the subset
+    # Initialize data
+    corpus_data, grouped_questions = init_data(args)
+    logging.info(f"🚀 Starting {args.method} processing for subset: {args.subset}")
     for item in corpus_data:
         corpus_name = item["corpus_name"]
         context = item["context"]
@@ -323,17 +205,14 @@ def main():
                 corpus_name=corpus_name,
                 context=context,
                 base_dir=args.base_dir,
-                mode=args.mode,
-                model_name=args.model_name,
-                embed_model_name=args.embed_model,
-                llm_base_url=args.llm_base_url,
-                llm_api_key=api_key,
                 questions=grouped_questions,
                 sample=args.sample,
-                retrieve_topk=args.retrieve_topk
+                output_dir=f"./results/{args.method.lower()}",
+                rag_init_func=lightrag_init_func,
+                query_func=lightrag_query_func,
+                args=args,
             )
         )
 
 if __name__ == "__main__":
     main()
-
