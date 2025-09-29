@@ -2,17 +2,14 @@ import asyncio
 import logging
 import os
 
-from dotenv import load_dotenv
 from fast_graphrag import GraphRAG
 from fast_graphrag._llm import OpenAILLMService, HuggingFaceEmbeddingService
 from transformers import AutoTokenizer, AutoModel
 
-from Examples.shared_code import BASE_ARG_CONFIG, parse_args, init_data
 from Evaluation.llm.ollama_client import OllamaClient, OllamaWrapper
+from Examples.shared_code import BASE_ARG_CONFIG, parse_args, init_data, process_corpus, setup_logging
 
-
-# Load environment variables
-load_dotenv()
+logger = setup_logging("fast_graphrag_processing.log")
 
 # Configuration constants
 DOMAIN = "Analyze this story and identify the characters. Focus on how they interact with each other, the locations they explore, and their relationships."
@@ -39,9 +36,7 @@ async def fastgrag_init_func(
         logging.error(f"❌ Failed to load embedding model: {e}")
         return
 
-
-    # Initialize LLM service based on mode
-    if mode == "ollama":
+    if args.mode == "ollama":
         # Create Ollama client
         ollama_client = OllamaClient(base_url=args.llm_base_url)
         llm_service = OllamaWrapper(ollama_client, args.model_name)
@@ -53,9 +48,9 @@ async def fastgrag_init_func(
             base_url=args.llm_base_url,
             api_key=args.llm_api_key,
         )
-        logging.info(f"✅ Using OpenAI-compatible LLM service: {model_name} at {llm_base_url}")
+        logging.info(f"✅ Using OpenAI-compatible LLM service: {args.model_name} at {args.llm_base_url}")
 
-    # Initialize GraphRAG
+    # Initialize Fast-GraphRAG
     grag = GraphRAG(
         working_dir=os.path.join(base_dir, corpus_name),
         domain=DOMAIN,

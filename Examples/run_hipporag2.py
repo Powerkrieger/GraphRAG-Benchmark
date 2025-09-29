@@ -1,24 +1,20 @@
+import asyncio
 import logging
 import os
 from typing import List
 
-from dotenv import load_dotenv
-from transformers import AutoTokenizer
-
 # Load environment variables
+from dotenv import load_dotenv
 load_dotenv()
 
-# Set CUDA device
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-
 # Import HippoRAG components after setting environment
+from transformers import AutoTokenizer
 from src.hipporag.HippoRAG import HippoRAG
 from src.hipporag.utils.misc_utils import string_to_bool
 from src.hipporag.utils.config_utils import BaseConfig
 
 # import local code
-from Evaluation.llm.ollama_client import OllamaClient, OllamaWrapper
-from Examples.shared_code import BASE_ARG_CONFIG, parse_args, setup_logging, init_data
+from Examples.shared_code import BASE_ARG_CONFIG, parse_args, setup_logging, init_data, process_corpus
 
 logger = setup_logging("hipporag_processing.log")
 
@@ -71,7 +67,7 @@ async def hipporag_init_func(corpus_name, context, base_dir, args):
     )
 
     # Override LLM configuration for Ollama mode
-    if mode == "ollama":
+    if args.mode == "ollama":
         config.llm_mode = "ollama"
         logging.info(f"✅ Using Ollama mode: {args.model_name} at {args.llm_base_url}")
     else:
@@ -109,6 +105,7 @@ def main():
         - adding commandline arguments and
         - changing the rag_init_func and rag_query_func.
     """
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     # Optionally extend BASE_ARG_CONFIG for script-specific arguments
     arg_config = BASE_ARG_CONFIG.copy()
     arg_config["args"][0]["params"]["default"] = "HippoRAG"

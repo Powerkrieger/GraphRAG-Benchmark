@@ -1,20 +1,20 @@
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-import logging
 import asyncio
+import logging
+import os
 from pathlib import Path
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
 from Core.GraphRAG import GraphRAG
-from Option.Config2 import Config
-from Data.QueryDataset import RAGQueryDataset
 from Core.Utils.Evaluation import Evaluator
+from Data.QueryDataset import RAGQueryDataset
+from Option.Config2 import Config
 
 from shared_code import setup_logging, BASE_ARG_CONFIG, parse_args, init_data, process_corpus
 
-# Configure logging
 logger = setup_logging("digimon_processing.log")
-logger = logging.getLogger(__name__)
-
 
 async def initialize_rag(
     config_path: Path,
@@ -35,7 +35,7 @@ async def initialize_rag(
             opt.llm_config.model_name = args.model_name
             opt.llm_config.base_url = args.llm_base_url
             opt.llm_config.api_key = args.llm_api_key
-            opt.llm_config.mode = "ollama"
+            opt.llm_config.mode = args.mode
 
         logger.info(f"Ollama configuration: model={args.model_name}, base_url={args.llm_base_url}")
     else:
@@ -81,6 +81,7 @@ def main():
         - adding commandline arguments and
         - changing the rag_init_func and rag_query_func.
     """
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     # Optionally extend BASE_ARG_CONFIG for script-specific arguments
     arg_config = BASE_ARG_CONFIG.copy()
     arg_config["args"] += [

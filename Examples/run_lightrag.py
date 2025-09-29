@@ -1,4 +1,3 @@
-# lightrag_example.py
 import asyncio
 import logging
 import os
