@@ -7,6 +7,7 @@ This directory contains example implementations for running inference on the Gra
 **To prevent dependency conflicts, we strongly recommend using separate Conda environments for each framework:**
 
 We use the installation of LightRAG as an example. For other frameworks, please refer to their respective installation instructions.
+
 ```bash
 # Create and activate environment (example for LightRAG)
 conda create -n lightrag python=3.10 -y
@@ -20,13 +21,19 @@ pip install -e .
 ```
 
 ## 🚀 Running Example
+
 Next, we provide detailed instructions on how to use GraphRAG-Bench to evaluate each framework. Specifically, we introduce how to perform index construction and batch inference for each framework. Note that the evaluation code is standardized across all frameworks to ensure fair comparison.
+
 ### 1. Indexing and inference
+
 #### a. LightRAG
+
 **We use LightRAG version v1.2.5.**
 
 Before running the above script, you need to modify the source code(LightRAG) to enable extraction of the corresponding context used during generation. Please make the following changes:
+
 1. In `lightrag/operate.py`, update the kg_query method to return the context along with the response:
+
 ```python
 # Original Code
 async def kg_query(...) -> str | AsyncIterator[str]:
@@ -36,7 +43,9 @@ async def kg_query(...) -> str | AsyncIterator[str]:
 async def kg_query(...) -> tuple[str, str] | tuple[AsyncIterator[str], str]:
   return response, context
 ```
+
 2. In `lightrag/lightrag.py`, update the aquery method to receive and return the context when calling kg_query:
+
 ```python
 # Modified Code
 async def aquery(...):
@@ -47,12 +56,17 @@ async def aquery(...):
   return response, context
 
 ```
-Then you can run the following command to indexing and inference:
+
+Then you can run the following command to indexing and inference
+
+**Note**: Mode can choose:"API" or "ollama". When you choose "ollama" the "llm_base_url" is where your ollama running (default:http://localhost:11434):
+
 ```shell
 export LLM_API_KEY=your_actual_api_key_here
 
 python run_lightrag.py \
   --subset medical \
+  --mode API \
   --base_dir ./Examples/lightrag_workspace \
   --model_name bge-large-en-v1.5 \
   --embed_model bge-base-en \
@@ -61,10 +75,14 @@ python run_lightrag.py \
   --llm_base_url https://api.openai.com/v1
 
 ```
+
 #### b. fast-graphrag
-Since the original fast-LightRAG does not support HuggingFace Embedding, we need to adapt the library accordingly. The detailed adaptation process is as follows:
+
+Since the original fast-graphrag does not support HuggingFace Embedding, we need to adapt the library accordingly. The detailed adaptation process is as follows:
+
 1. Go to the `fast_graphrag/_llm` directory and create a new file named _hf.py.
-The content of this file is as follows. This code mainly adds support for HuggingFace Embedding:
+   The content of this file is as follows. This code mainly adds support for HuggingFace Embedding:
+
 ```python
 import asyncio
 from dataclasses import dataclass, field
@@ -155,7 +173,9 @@ class HuggingFaceEmbeddingService(BaseEmbeddingService):
                         return embeddings.detach().cpu().numpy()
 
 ```
+
 2. Then, modify `fast_graphrag/_llm/__init__.py` to include the initialization of the newly added classes.
+
 ```python
 __all__ = [
     ...
@@ -165,7 +185,9 @@ __all__ = [
 from ._hf import HuggingFaceEmbeddingService
 
 ```
+
 Then you can run the following command to indexing and inference:
+
 ```shell
 export LLM_API_KEY=your_actual_api_key_here
 
@@ -180,6 +202,7 @@ python run_fast-graphrag.py \
 ```
 
 #### c. hipporag2
+
 **We use hipporag2 version v1.0.0**.
 
 ```shell
@@ -193,13 +216,29 @@ python run_hipporag2.py \
 #   --sample 100 \
   --llm_base_url https://api.openai.com/v1
 ```
+
+#### d. DIGIMON
+DIGIMON is a unified framework that integrates multiple GraphRAG frameworks: [DIGIMON: Deep Analysis of Graph-Based Retrieval-Augmented Generation (RAG) Systems](https://github.com/JayLZhou/GraphRAG)
+1. Move `run_digimon.py` into the corresponding DIGIMON project.  
+2. Modify the related config files according to the DIGIMON instructions.  
+3. Run the following command:
+
+```bash
+python run_digimon.py 
+--subset novel 
+--option ./Option/Method/HippoRAG.yaml 
+--output_dir ./results/test 
+# --sample 100
+```
+
 We will continue updating other GraphRAG frameworks as much as possible. If you wish to integrate a different framework, you can refer to the structure of our result format. As long as your returned output matches the following fields, the evaluation code will run successfully:
+
 ```json
 {
   "id": q["id"],
   "question": q["question"],
   "source": corpus_name,
-  "context": context,
+  "context": List[str],
   "evidence": q["evidence"],
   "question_type": q["question_type"],
   "generated_answer": predicted_answer,
@@ -207,30 +246,4 @@ We will continue updating other GraphRAG frameworks as much as possible. If you 
 }
 
 ```
-### 2. Evaluation
-#### a. Generation
-```shell
-export OPENAI_API_KEY=your_actual_api_key_here
-
-python -m Evaluation.generation_eval \
-  --model gpt-4-turbo \
-  --base_url https://api.openai.com/v1 \
-  --bge_model BAAI/bge-large-en-v1.5 \
-  --data_file ./results/lightrag.json \
-  --output_file ./results/evaluation_results.json
-```
-
-#### b. Retrieval
-```shell
-cd Evaluation
-export OPENAI_API_KEY=your_actual_api_key_here
-
-python -m Evaluation.retrieval_eval \
-  --model gpt-4-turbo \
-  --base_url https://api.openai.com/v1 \
-  --bge_model BAAI/bge-large-en-v1.5 \
-  --data_file ./results/lightrag.json \
-  --output_file ./results/evaluation_results.json
-```
-
 
