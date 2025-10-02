@@ -21,12 +21,12 @@ SUBSET_PATHS = {
 BASE_ARG_CONFIG = {
     "description": "Process Corpora and Answer Questions",
     "args": [
-        {"flags": ["--method"], "params": {"required": True, "type":str, "help": "Method name for logging and folder naming - e.g. 'LightRAG' or 'HippoRAG'"}},
+        {"flags": ["--method"], "params": {"type":str, "help": "Method name for logging and folder naming - e.g. 'LightRAG' or 'HippoRAG'"}},
         {"flags": ["--subset"], "params": {"required": True, "choices": ["medical", "novel"], "help": "Subset to process"}},
         {"flags": ["--base_dir"], "params": {"default": "./workspace", "help": "Base working directory"}},
         {"flags": ["--mode"], "params": {"required": True, "choices": ["API", "ollama"], "help": "Use API or ollama for LLM"}},
         {"flags": ["--model_name"], "params": {"default": "gpt-4o-mini", "help": "LLM model identifier"}},
-        {"flags": ["--embed_model"], "params": {"default": "bge-large:latest", "help": "Embedding model name"}},
+        {"flags": ["--embed_model"], "params": {"default": "bge-large:latest", "help": "Embedding model name for ollama or hf model, depending on method"}},
         {"flags": ["--sample"], "params": {"type": int, "default": None, "help": "Number of questions to sample per corpus"}},
         {"flags": ["--llm_base_url"], "params": {"default": "https://api.openai.com/v1", "help": "Base URL for LLM API"}},
         {"flags": ["--llm_api_key"], "params": {"default": os.getenv("OPENAI_API_KEY", ""), "help": "API key for LLM service"}},

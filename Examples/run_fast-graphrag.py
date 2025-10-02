@@ -2,13 +2,18 @@ import asyncio
 import logging
 import os
 
+import nest_asyncio
 from fast_graphrag import GraphRAG
 from fast_graphrag._llm import OpenAILLMService, HuggingFaceEmbeddingService
 from transformers import AutoTokenizer, AutoModel
 
+import sys
+sys.path.append(os.getcwd())
+print(sys.path)
 from Evaluation.llm.ollama_client import OllamaClient, OllamaWrapper
-from Examples.shared_code import BASE_ARG_CONFIG, parse_args, init_data, process_corpus, setup_logging
+from shared_code import BASE_ARG_CONFIG, parse_args, init_data, process_corpus, setup_logging
 
+nest_asyncio.apply()
 logger = setup_logging("fast_graphrag_processing.log")
 
 # Configuration constants
@@ -76,6 +81,8 @@ async def fastgrag_query_func(
     """Query the GraphRAG instance"""
     # Execute query
     response = grag.query(question["question"])
+    if asyncio.iscoroutine(response):
+        response = await response
     context_chunks = response.to_dict()['context']['chunks']
     context = [item[0]["content"] for item in context_chunks]
     predicted_answer = response.response
@@ -92,7 +99,12 @@ def main():
     """
     # Optionally extend BASE_ARG_CONFIG for script-specific arguments
     arg_config = BASE_ARG_CONFIG.copy()
-    arg_config["args"][0]["params"]["default"] = "FastGraphRAG"
+    for arg in arg_config["args"]:
+        if "--method" in arg["flags"]:
+            arg["params"]["default"] = "FastGraphRAG"
+        if "--embed_model" in arg["flags"]:
+            arg["params"]["help"] = "use a huggingface embedding model - e.g. 'BAAI/bge-large-en-v1.5'"
+            arg["params"]["default"] = "BAAI/bge-large-en-v1.5"
     args = parse_args(arg_config)
 
     # Initialize data

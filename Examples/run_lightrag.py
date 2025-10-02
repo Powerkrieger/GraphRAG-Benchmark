@@ -164,11 +164,16 @@ def main():
     """
     # Optionally extend BASE_ARG_CONFIG for script-specific arguments
     arg_config = BASE_ARG_CONFIG.copy()
+    for arg in arg_config["args"]:
+        if "--method" in arg["flags"]:
+            arg["params"]["default"] = "LightRAG"
+        if "--embed_model" in arg["flags"]:
+            arg["params"]["help"] = "use a ollama embedding model - e.g. 'bge-large:latest'"
+            arg["params"]["default"] = "bge-large:latest"
     arg_config["args"] += [
         {"flags": ["--retrieve_topk"],
          "params": {"type": int, "default": 5, "help": "Number of top documents to retrieve"}}
     ]
-    arg_config["args"][0]["params"]["default"] = "LightRAG"
     args = parse_args(arg_config)
 
     # Initialize data
