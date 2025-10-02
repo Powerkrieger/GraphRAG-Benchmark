@@ -1,0 +1,42 @@
+[project]
+name = "graphrag-benchmark"
+version = "0.1.0"
+requires-python = ">=3.10.18"
+dependencies = [
+    "datasets==3.3.2",
+    "evaluation==0.0.2",
+    "graspologic>=3.3.0",
+    "json5>=0.12.1",
+    "langchain==0.3.26",
+    "langchain-core==0.3.69",
+    "langchain-ollama>=0.3.5",
+    "langchain-openai==0.3.28",
+    "nano-vectordb>=0.0.4.3",
+    "ollama>=0.5.4",
+    "pipmaster>=1.0.4",
+    "pydantic==2.11.7",
+    "ragas==0.2.15",
+    "rouge-score==0.1.2",
+    "torch>=2.8.0",
+    "transformers>=4.56.2",
+]
+
+[tool.uv.sources]
+lightrag-hku = { path = "../lightrag_hku-1.2.5", editable = true }
+fast-graphrag = { path = "../fast_graphrag-0.0.5", editable = true }
+
+[dependency-groups]
+fastgrag = [
+    "fast-graphrag",
+]
+lightrag = [
+    "lightrag-hku",
+]
+
+[tool.uv]
+conflicts = [
+    [
+        { group = "lightrag" },
+        { group = "fastgrag" },
+    ]
+]
